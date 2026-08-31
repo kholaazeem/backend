@@ -14,16 +14,27 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+const allowedOrigins = [
+  'https://frontend-six-lovat-bw1ykfmmcm.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  process.env.CLIENT_URL
+].filter(Boolean);
+
 // Socket.IO setup
 const io = new Server(server, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE']
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
   }
 });
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
 app.use(express.json());
 
 // API Routes

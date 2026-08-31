@@ -6,6 +6,8 @@ import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 
 import authRoutes from './routes/authRoutes.js';
+import ticketRoutes from './routes/ticketRoutes.js';
+import reviewRoutes from './routes/reviewRoutes.js';
 
 dotenv.config();
 
@@ -26,6 +28,8 @@ app.use(express.json());
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/tickets', ticketRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Socket connection handler
 io.on('connection', (socket) => {

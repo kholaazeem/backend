@@ -37,6 +37,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Pass socket instance to routes
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
@@ -54,12 +60,6 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log(`❌ Client disconnected: ${socket.id}`);
   });
-});
-
-// Pass socket instance to routes
-app.use((req, res, next) => {
-  req.io = io;
-  next();
 });
 
 // Health check endpoint

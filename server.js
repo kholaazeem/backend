@@ -80,3 +80,6 @@ server.listen(PORT, () => {
   console.log(`🤖 AI Engine: Active (Gemini API + Keyword Fallback)`);
   console.log(`⚡ Socket.IO Real-time Server: Ready`);
 });
+
+export default app;
+

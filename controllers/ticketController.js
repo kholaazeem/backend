@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Ticket from '../models/Ticket.js';
 import User from '../models/User.js';
 import { analyzeComplaintAI } from '../services/aiService.js';
@@ -94,39 +95,42 @@ export const createTicket = async (req, res) => {
     const { subject, description, category, urgency, assignedWorkerId, aiTriage } = req.body;
     const customerId = req.user?._id || 'user_cust_1';
 
-    try {
-      const ticket = await Ticket.create({
-        customer: customerId,
-        assignedWorker: assignedWorkerId || null,
-        subject,
-        description,
-        category: category || aiTriage?.predictedCategory || 'General',
-        urgency: urgency || aiTriage?.suggestedUrgency || 'Medium',
-        aiTriage: aiTriage || {
-          predictedCategory: category || 'General',
-          suggestedUrgency: urgency || 'Medium',
-          aiSummary: description.substring(0, 100),
-          method: 'keyword-fallback'
-        }
-      });
-
-      const populated = await Ticket.findById(ticket._id)
-        .populate('customer', 'name email avatar')
-        .populate('assignedWorker', 'name specialty rating avatar');
-
-      // Emit real-time notification via Socket.IO
-      if (req.io) {
-        req.io.emit('new_booking_notification', {
-          ticketId: ticket._id,
-          ticketNumber: ticket.ticketNumber,
-          subject: ticket.subject,
-          assignedWorkerId
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const ticket = await Ticket.create({
+          customer: customerId,
+          assignedWorker: assignedWorkerId || null,
+          subject,
+          description,
+          category: category || aiTriage?.predictedCategory || 'General',
+          urgency: urgency || aiTriage?.suggestedUrgency || 'Medium',
+          aiTriage: aiTriage || {
+            predictedCategory: category || 'General',
+            suggestedUrgency: urgency || 'Medium',
+            aiSummary: description.substring(0, 100),
+            method: 'keyword-fallback'
+          }
         });
-      }
 
-      return res.status(201).json(populated);
-    } catch (dbError) {
-      console.log('📌 DB offline, using mock ticket creation fallback');
+        const populated = await Ticket.findById(ticket._id)
+          .populate('customer', 'name email avatar')
+          .populate('assignedWorker', 'name specialty rating avatar');
+
+        // Emit real-time notification via Socket.IO
+        if (req.io) {
+          req.io.emit('new_booking_notification', {
+            ticketId: ticket._id,
+            ticketNumber: ticket.ticketNumber,
+            subject: ticket.subject,
+            assignedWorkerId
+          });
+        }
+
+        return res.status(201).json(populated);
+      } catch (dbError) {
+        console.log('📌 DB error, using mock ticket creation fallback');
+      }
+    }
       const newMock = {
         _id: 'tkt_' + Date.now(),
         ticketNumber: 'TKT-' + Math.floor(1000 + Math.random() * 9000),
@@ -147,7 +151,6 @@ export const createTicket = async (req, res) => {
       };
       mockTickets.unshift(newMock);
       return res.status(201).json(newMock);
-    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -160,30 +163,33 @@ export const getTickets = async (req, res) => {
     const userId = req.user?._id;
     const userRole = req.user?.role || 'customer';
 
-    try {
-      let query = {};
-      if (userRole === 'customer') {
-        query.customer = userId;
-      } else if (userRole === 'worker') {
-        query.$or = [{ assignedWorker: userId }, { status: 'pending' }];
-      }
+    if (mongoose.connection.readyState === 1) {
+      try {
+        let query = {};
+        if (userRole === 'customer') {
+          query.customer = userId;
+        } else if (userRole === 'worker') {
+          query.$or = [{ assignedWorker: userId }, { status: 'pending' }];
+        }
 
-      const tickets = await Ticket.find(query)
-        .populate('customer', 'name email avatar')
-        .populate('assignedWorker', 'name specialty rating avatar')
-        .sort({ createdAt: -1 });
+        const tickets = await Ticket.find(query)
+          .populate('customer', 'name email avatar')
+          .populate('assignedWorker', 'name specialty rating avatar')
+          .sort({ createdAt: -1 });
 
-      return res.json(tickets);
-    } catch (dbError) {
-      console.log('📌 DB offline, returning mock tickets filtered by role');
-      let filtered = mockTickets;
-      if (userRole === 'customer') {
-        filtered = mockTickets.filter(t => t.customer._id === userId || t.customer.email === req.user?.email);
-      } else if (userRole === 'worker') {
-        filtered = mockTickets.filter(t => t.assignedWorker._id === userId || t.status === 'pending');
+        return res.json(tickets);
+      } catch (dbError) {
+        console.log('📌 DB error, returning mock tickets filtered by role');
       }
-      return res.json(filtered);
     }
+
+    let filtered = mockTickets;
+    if (userRole === 'customer') {
+      filtered = mockTickets.filter(t => t.customer._id === userId || t.customer.email === req.user?.email);
+    } else if (userRole === 'worker') {
+      filtered = mockTickets.filter(t => t.assignedWorker?._id === userId || t.status === 'pending');
+    }
+    return res.json(filtered);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -196,42 +202,46 @@ export const updateTicketStatus = async (req, res) => {
     const { id } = req.params;
     const { status, urgency, resolutionNote } = req.body;
 
-    try {
-      const ticket = await Ticket.findById(id);
-      if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const ticket = await Ticket.findById(id);
+        if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
 
-      // Enforce status lock rule: Once rejected or completed, status cannot be changed again!
-      if (ticket.status === 'completed' || ticket.status === 'rejected') {
-        return res.status(400).json({ message: 'Task status is finalized and locked. Cannot edit completed or rejected tasks!' });
-      }
-
-      if (status) ticket.status = status;
-      if (urgency) ticket.urgency = urgency;
-      if (resolutionNote) ticket.resolutionNote = resolutionNote;
-      if (status === 'completed') ticket.resolvedAt = new Date();
-
-      await ticket.save();
-
-      // Socket IO notification
-      if (req.io) {
-        req.io.emit('ticket_status_updated', { ticketId: id, status: ticket.status });
-      }
-
-      return res.json(ticket);
-    } catch (dbError) {
-      // Mock fallback update
-      const ticket = mockTickets.find(t => t._id === id);
-      if (ticket) {
+        // Enforce status lock rule: Once rejected or completed, status cannot be changed again!
         if (ticket.status === 'completed' || ticket.status === 'rejected') {
           return res.status(400).json({ message: 'Task status is finalized and locked. Cannot edit completed or rejected tasks!' });
         }
+
         if (status) ticket.status = status;
         if (urgency) ticket.urgency = urgency;
         if (resolutionNote) ticket.resolutionNote = resolutionNote;
+        if (status === 'completed') ticket.resolvedAt = new Date();
+
+        await ticket.save();
+
+        // Socket IO notification
+        if (req.io) {
+          req.io.emit('ticket_status_updated', { ticketId: id, status: ticket.status });
+        }
+
         return res.json(ticket);
+      } catch (dbError) {
+        console.log('📌 DB error on status update, trying mock');
       }
-      res.status(404).json({ message: 'Ticket not found' });
     }
+
+    // Mock fallback update
+    const ticket = mockTickets.find(t => t._id === id);
+    if (ticket) {
+      if (ticket.status === 'completed' || ticket.status === 'rejected') {
+        return res.status(400).json({ message: 'Task status is finalized and locked. Cannot edit completed or rejected tasks!' });
+      }
+      if (status) ticket.status = status;
+      if (urgency) ticket.urgency = urgency;
+      if (resolutionNote) ticket.resolutionNote = resolutionNote;
+      return res.json(ticket);
+    }
+    res.status(404).json({ message: 'Ticket not found' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

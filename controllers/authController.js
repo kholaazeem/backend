@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import { generateToken } from '../utils/generateToken.js';
 
@@ -51,46 +52,50 @@ export const registerUser = async (req, res) => {
     const { name, email, password, role, specialty } = req.body;
 
     // Check database connection
-    try {
-      const userExists = await User.findOne({ email });
-      if (userExists) {
-        return res.status(400).json({ message: 'User already exists with this email' });
-      }
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const userExists = await User.findOne({ email });
+        if (userExists) {
+          return res.status(400).json({ message: 'User already exists with this email' });
+        }
 
-      const user = await User.create({
-        name,
-        email,
-        password,
-        role: role || 'customer',
-        specialty: specialty || 'General'
-      });
-
-      if (user) {
-        return res.status(201).json({
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          specialty: user.specialty,
-          rating: user.rating,
-          token: generateToken(user._id)
+        const user = await User.create({
+          name,
+          email,
+          password,
+          role: role || 'customer',
+          specialty: specialty || 'General'
         });
+
+        if (user) {
+          return res.status(201).json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            specialty: user.specialty,
+            rating: user.rating,
+            token: generateToken(user._id)
+          });
+        }
+      } catch (dbError) {
+        console.log('📌 DB error, falling back to mock user registration');
       }
-    } catch (dbError) {
-      // Fallback mock mode
-      console.log('📌 DB offline, using mock user registration fallback');
-      const mockUser = {
-        _id: 'user_' + Date.now(),
-        name,
-        email,
-        role: role || 'customer',
-        specialty: specialty || 'General',
-        rating: 5.0,
-        token: generateToken('user_' + Date.now())
-      };
-      mockUsers.push({ ...mockUser, password });
-      return res.status(201).json(mockUser);
     }
+
+    // Fallback mock mode
+    console.log('📌 DB offline/mock mode, using mock user registration');
+    const mockUser = {
+      _id: 'user_' + Date.now(),
+      name,
+      email,
+      role: role || 'customer',
+      specialty: specialty || 'General',
+      rating: 5.0,
+      token: generateToken('user_' + Date.now())
+    };
+    mockUsers.push({ ...mockUser, password });
+    return res.status(201).json(mockUser);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -103,24 +108,26 @@ export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    try {
-      const user = await User.findOne({ email });
-      if (user && (await user.matchPassword(password))) {
-        return res.json({
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          specialty: user.specialty,
-          rating: user.rating,
-          avatar: user.avatar,
-          token: generateToken(user._id)
-        });
-      } else if (user) {
-        return res.status(401).json({ message: 'Invalid email or password' });
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const user = await User.findOne({ email });
+        if (user && (await user.matchPassword(password))) {
+          return res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            specialty: user.specialty,
+            rating: user.rating,
+            avatar: user.avatar,
+            token: generateToken(user._id)
+          });
+        } else if (user) {
+          return res.status(401).json({ message: 'Invalid email or password' });
+        }
+      } catch (dbError) {
+        console.log('📌 DB offline, checking mock user login');
       }
-    } catch (dbError) {
-      console.log('📌 DB offline, checking mock user login');
     }
 
     // Check mock users for quick demo login

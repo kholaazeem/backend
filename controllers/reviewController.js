@@ -10,34 +10,43 @@ let mockReviews = [];
 export const submitReview = async (req, res) => {
   try {
     const { ticketId, workerId, rating, comment } = req.body;
-    const customerId = req.user?._id || 'user_cust_1';
+    const customerId = req.user?._id;
 
     if (mongoose.connection.readyState === 1) {
       try {
-        const review = await Review.create({
-          ticket: ticketId,
-          customer: customerId,
-          worker: workerId,
-          rating: Number(rating),
-          comment
-        });
+        const isValidWorker = workerId && mongoose.Types.ObjectId.isValid(workerId);
+        let review = null;
 
-        // Update worker average rating
-        const workerReviews = await Review.find({ worker: workerId });
-        const total = workerReviews.reduce((sum, r) => sum + r.rating, 0);
-        const avg = (total / workerReviews.length).toFixed(1);
+        if (isValidWorker) {
+          review = await Review.create({
+            ticket: ticketId,
+            customer: customerId || undefined,
+            worker: workerId,
+            rating: Number(rating),
+            comment
+          });
 
-        await User.findByIdAndUpdate(workerId, {
-          rating: Number(avg),
-          $inc: { reviewCount: 1 }
-        });
+          // Update worker average rating
+          const workerReviews = await Review.find({ worker: workerId });
+          const total = workerReviews.reduce((sum, r) => sum + r.rating, 0);
+          const avg = (total / workerReviews.length).toFixed(1);
+
+          await User.findByIdAndUpdate(workerId, {
+            rating: Number(avg),
+            $inc: { reviewCount: 1 }
+          });
+        }
 
         // Save rating onto Ticket so worker & customer see it on their dashboards
-        await Ticket.findByIdAndUpdate(ticketId, {
-          rating: Number(rating),
-          reviewComment: comment,
-          isRated: true
-        });
+        const updatedTicket = await Ticket.findByIdAndUpdate(
+          ticketId,
+          {
+            rating: Number(rating),
+            reviewComment: comment,
+            isRated: true
+          },
+          { new: true }
+        );
 
         // Emit real-time notification to worker
         if (req.io) {
@@ -50,9 +59,9 @@ export const submitReview = async (req, res) => {
           });
         }
 
-        return res.status(201).json(review);
+        return res.status(201).json(review || updatedTicket);
       } catch (dbError) {
-        console.log('📌 DB error, using mock review fallback');
+        console.log('📌 DB error in review:', dbError.message);
       }
     }
 

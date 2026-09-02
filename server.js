@@ -24,15 +24,14 @@ const allowedOrigins = [
 // Socket.IO setup
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE']
   }
 });
 
 // Middleware
 app.use(cors({
-  origin: allowedOrigins,
+  origin: true,
   credentials: true
 }));
 app.use(express.json());

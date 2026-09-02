@@ -3,52 +3,9 @@ import Ticket from '../models/Ticket.js';
 import User from '../models/User.js';
 import { analyzeComplaintAI } from '../services/aiService.js';
 
-// In-memory mock tickets for fast demo if DB is offline
-let mockTickets = [
-  {
-    _id: 'tkt_1001',
-    ticketNumber: 'TKT-1001',
-    customer: { _id: 'user_cust_1', name: 'Sara Khan', email: 'customer@demo.com' },
-    assignedWorker: { _id: 'user_work_1', name: 'Worker Ali', specialty: 'Technical', rating: 4.9 },
-    subject: 'AC cooling issue and water leaking',
-    description: 'My main office AC is leaking water continuously and not cooling properly.',
-    category: 'Appliance',
-    status: 'in-progress',
-    urgency: 'High',
-    aiTriage: {
-      predictedCategory: 'Appliance',
-      suggestedUrgency: 'High',
-      aiSummary: 'Appliance leakage and cooling failure reported by customer.',
-      method: 'keyword-fallback'
-    },
-    createdAt: new Date(Date.now() - 3600000 * 2)
-  },
-  {
-    _id: 'tkt_1002',
-    ticketNumber: 'TKT-1002',
-    customer: { _id: 'user_cust_1', name: 'Sara Khan', email: 'customer@demo.com' },
-    assignedWorker: { _id: 'user_work_2', name: 'Worker Usman', specialty: 'Billing', rating: 4.8 },
-    subject: 'Double charge on invoice #9921',
-    description: 'I was charged twice for the same subscription payment on my credit card.',
-    category: 'Billing',
-    status: 'pending',
-    urgency: 'High',
-    aiTriage: {
-      predictedCategory: 'Billing',
-      suggestedUrgency: 'High',
-      aiSummary: 'Duplicate credit card payment charge reported for invoice #9921.',
-      method: 'keyword-fallback'
-    },
-    createdAt: new Date(Date.now() - 3600000 * 5)
-  }
-];
-
-// Available mock workers list for selection preview
-const mockAvailableWorkers = [
-  { _id: 'user_work_1', name: 'Worker Ali (Tech Expert)', specialty: 'Technical', rating: 4.9, reviewCount: 24, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
-  { _id: 'user_work_2', name: 'Worker Usman (Billing Specialist)', specialty: 'Billing', rating: 4.8, reviewCount: 18, avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150' },
-  { _id: 'user_work_3', name: 'Worker Hamza (Appliance Repair)', specialty: 'Appliance', rating: 5.0, reviewCount: 31, avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150' }
-];
+// In-memory mock storage if MongoDB is not connected
+let mockTickets = [];
+const mockAvailableWorkers = [];
 
 // @desc    Live AI Triage preview endpoint as user types description
 // @route   POST /api/tickets/triage-preview
@@ -134,8 +91,8 @@ export const createTicket = async (req, res) => {
       const newMock = {
         _id: 'tkt_' + Date.now(),
         ticketNumber: 'TKT-' + Math.floor(1000 + Math.random() * 9000),
-        customer: { _id: customerId, name: req.user?.name || 'Sara Khan', email: req.user?.email || 'customer@demo.com' },
-        assignedWorker: mockAvailableWorkers.find(w => w._id === assignedWorkerId) || mockAvailableWorkers[0],
+        customer: { _id: customerId, name: req.user?.name || 'Customer', email: req.user?.email || '' },
+        assignedWorker: assignedWorkerId ? { _id: assignedWorkerId, name: 'Assigned Worker' } : null,
         subject,
         description,
         category: category || aiTriage?.predictedCategory || 'General',

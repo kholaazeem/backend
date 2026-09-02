@@ -32,22 +32,53 @@ export const submitReview = async (req, res) => {
           $inc: { reviewCount: 1 }
         });
 
+        // Save rating onto Ticket so worker & customer see it on their dashboards
+        await Ticket.findByIdAndUpdate(ticketId, {
+          rating: Number(rating),
+          reviewComment: comment,
+          isRated: true
+        });
+
+        // Emit real-time notification to worker
+        if (req.io) {
+          req.io.emit('new_review_submitted', {
+            ticketId,
+            workerId,
+            rating: Number(rating),
+            comment,
+            customerName: req.user?.name || 'Customer'
+          });
+        }
+
         return res.status(201).json(review);
       } catch (dbError) {
         console.log('📌 DB error, using mock review fallback');
       }
     }
-      const newMockReview = {
-        _id: 'rev_' + Date.now(),
-        ticket: ticketId,
-        customer: customerId,
-        worker: workerId,
+
+    const newMockReview = {
+      _id: 'rev_' + Date.now(),
+      ticket: ticketId,
+      customer: customerId,
+      worker: workerId,
+      rating: Number(rating),
+      comment,
+      createdAt: new Date()
+    };
+    mockReviews.push(newMockReview);
+
+    // Emit real-time notification to worker
+    if (req.io) {
+      req.io.emit('new_review_submitted', {
+        ticketId,
+        workerId,
         rating: Number(rating),
         comment,
-        createdAt: new Date()
-      };
-      mockReviews.push(newMockReview);
-      return res.status(201).json(newMockReview);
+        customerName: req.user?.name || 'Customer'
+      });
+    }
+
+    return res.status(201).json(newMockReview);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

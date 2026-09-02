@@ -55,6 +55,18 @@ const ticketSchema = new mongoose.Schema(
     },
     resolvedAt: {
       type: Date
+    },
+    rating: {
+      type: Number,
+      default: null
+    },
+    reviewComment: {
+      type: String,
+      default: ''
+    },
+    isRated: {
+      type: Boolean,
+      default: false
     }
   },
   {

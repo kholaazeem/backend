@@ -178,7 +178,16 @@ export const updateTicketStatus = async (req, res) => {
 
         // Socket IO notification
         if (req.io) {
-          req.io.emit('ticket_status_updated', { ticketId: id, status: ticket.status });
+          req.io.emit('ticket_status_updated', {
+            ticketId: id,
+            status: ticket.status,
+            ticketNumber: ticket.ticketNumber,
+            subject: ticket.subject,
+            customerId: ticket.customer?._id || ticket.customer,
+            assignedWorkerId: ticket.assignedWorker?._id || ticket.assignedWorker,
+            resolutionNote: ticket.resolutionNote,
+            ticket
+          });
         }
 
         return res.json(ticket);
@@ -196,6 +205,21 @@ export const updateTicketStatus = async (req, res) => {
       if (status) ticket.status = status;
       if (urgency) ticket.urgency = urgency;
       if (resolutionNote) ticket.resolutionNote = resolutionNote;
+      if (status === 'completed') ticket.resolvedAt = new Date();
+
+      if (req.io) {
+        req.io.emit('ticket_status_updated', {
+          ticketId: id,
+          status: ticket.status,
+          ticketNumber: ticket.ticketNumber,
+          subject: ticket.subject,
+          customerId: ticket.customer?._id || ticket.customer,
+          assignedWorkerId: ticket.assignedWorker?._id || ticket.assignedWorker,
+          resolutionNote: ticket.resolutionNote,
+          ticket
+        });
+      }
+
       return res.json(ticket);
     }
     res.status(404).json({ message: 'Ticket not found' });

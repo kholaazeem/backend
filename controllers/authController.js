@@ -125,3 +125,80 @@ export const getMe = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Get all registered workers for customer booking
+// @route   GET /api/auth/workers
+// @access  Public
+export const getWorkers = async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const workers = await User.find({ role: 'worker' }).select('-password');
+        return res.json(workers);
+      } catch (dbError) {
+        console.log('📌 DB error fetching workers');
+      }
+    }
+    const mockFiltered = mockUsers.filter(u => u.role === 'worker');
+    return res.json(mockFiltered);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Update user profile / password
+// @route   PUT /api/auth/profile
+// @access  Private
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, password, specialty, avatar } = req.body;
+    const userId = req.user?._id;
+
+    if (mongoose.connection.readyState === 1 && userId) {
+      try {
+        const user = await User.findById(userId);
+        if (user) {
+          if (name) user.name = name;
+          if (specialty) user.specialty = specialty;
+          if (avatar !== undefined) user.avatar = avatar;
+          if (password) user.password = password;
+
+          const updated = await user.save();
+          return res.json({
+            _id: updated._id,
+            name: updated.name,
+            email: updated.email,
+            role: updated.role,
+            specialty: updated.specialty,
+            rating: updated.rating,
+            avatar: updated.avatar,
+            token: generateToken(updated._id)
+          });
+        }
+      } catch (dbError) {
+        console.log('📌 DB error updating profile');
+      }
+    }
+
+    // Mock fallback update
+    const userIndex = mockUsers.findIndex(u => u._id === userId || u.email === req.user?.email);
+    if (userIndex !== -1) {
+      if (name) mockUsers[userIndex].name = name;
+      if (specialty) mockUsers[userIndex].specialty = specialty;
+      if (avatar !== undefined) mockUsers[userIndex].avatar = avatar;
+      if (password) mockUsers[userIndex].password = password;
+      return res.json(mockUsers[userIndex]);
+    }
+
+    const updatedMock = {
+      ...req.user,
+      name: name || req.user?.name,
+      specialty: specialty || req.user?.specialty,
+      avatar: avatar !== undefined ? avatar : req.user?.avatar
+    };
+    return res.json(updatedMock);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+

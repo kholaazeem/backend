@@ -34,8 +34,8 @@ const ticketSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'accepted', 'in-progress', 'completed', 'rejected'],
-      default: 'pending'
+      enum: ['new', 'assigned', 'in-progress', 'resolved', 'pending', 'accepted', 'completed', 'rejected'],
+      default: 'new'
     },
     urgency: {
       type: String,
@@ -47,8 +47,37 @@ const ticketSchema = new mongoose.Schema(
       suggestedUrgency: { type: String, default: 'Medium' },
       aiSummary: { type: String, default: 'AI analysis in progress...' },
       method: { type: String, enum: ['gemini', 'keyword-fallback'], default: 'keyword-fallback' },
-      isReviewedByWorker: { type: Boolean, default: false }
+      isReviewedByWorker: { type: Boolean, default: false },
+      isReviewedByAgent: { type: Boolean, default: false },
+      reviewedAt: { type: Date }
     },
+    messages: [
+      {
+        sender: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true
+        },
+        senderRole: {
+          type: String,
+          enum: ['customer', 'worker', 'admin'],
+          required: true
+        },
+        senderName: {
+          type: String,
+          required: true
+        },
+        text: {
+          type: String,
+          required: true,
+          trim: true
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now
+        }
+      }
+    ],
     resolutionNote: {
       type: String,
       default: ''

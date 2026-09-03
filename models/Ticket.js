@@ -46,7 +46,7 @@ const ticketSchema = new mongoose.Schema(
       predictedCategory: { type: String, default: 'General' },
       suggestedUrgency: { type: String, default: 'Medium' },
       aiSummary: { type: String, default: 'AI analysis in progress...' },
-      method: { type: String, enum: ['gemini', 'keyword-fallback'], default: 'keyword-fallback' },
+      method: { type: String, enum: ['gemini', 'keyword-fallback','smart-engine'], default: 'keyword-fallback' },
       isReviewedByWorker: { type: Boolean, default: false },
       isReviewedByAgent: { type: Boolean, default: false },
       reviewedAt: { type: Date }

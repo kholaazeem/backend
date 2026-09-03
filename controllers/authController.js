@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import { generateToken } from '../utils/generateToken.js';
+import { connectDB } from '../config/db.js';
 
 // In-memory mock storage if MongoDB is not connected
 let mockUsers = [];
@@ -11,18 +12,31 @@ let mockUsers = [];
 export const registerUser = async (req, res) => {
   try {
     const { name, email, password, role, specialty } = req.body;
+    const cleanEmail = email ? email.trim().toLowerCase() : '';
 
-    // Check database connection
+    if (!cleanEmail || !password) {
+      return res.status(400).json({ message: 'Please provide all required fields' });
+    }
+
+    // Ensure database connection
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectDB();
+      } catch (e) {
+        console.log('📌 DB connection attempt failed in register');
+      }
+    }
+
     if (mongoose.connection.readyState === 1) {
       try {
-        const userExists = await User.findOne({ email });
+        const userExists = await User.findOne({ email: cleanEmail });
         if (userExists) {
           return res.status(400).json({ message: 'User already exists with this email' });
         }
 
         const user = await User.create({
-          name,
-          email,
+          name: name ? name.trim() : 'User',
+          email: cleanEmail,
           password,
           role: role || 'customer',
           specialty: specialty || 'General'
@@ -40,16 +54,17 @@ export const registerUser = async (req, res) => {
           });
         }
       } catch (dbError) {
-        console.log('📌 DB error, falling back to mock user registration');
+        console.log('📌 DB error in registration:', dbError.message);
+        return res.status(500).json({ message: 'Database error creating account: ' + dbError.message });
       }
     }
 
-    // Fallback mock mode
-    console.log('📌 DB offline/mock mode, using mock user registration');
+    // Fallback mock mode only if DB is truly offline
+    console.log('📌 DB offline, using mock user registration');
     const mockUser = {
       _id: 'user_' + Date.now(),
-      name,
-      email,
+      name: name ? name.trim() : 'User',
+      email: cleanEmail,
       role: role || 'customer',
       specialty: specialty || 'General',
       rating: 5.0,
@@ -68,31 +83,52 @@ export const registerUser = async (req, res) => {
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const cleanEmail = email ? email.trim().toLowerCase() : '';
 
-    if (mongoose.connection.readyState === 1) {
+    if (!cleanEmail || !password) {
+      return res.status(400).json({ message: 'Please enter both email and password' });
+    }
+
+    // Ensure database connection
+    if (mongoose.connection.readyState !== 1) {
       try {
-        const user = await User.findOne({ email });
-        if (user && (await user.matchPassword(password))) {
-          return res.json({
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            specialty: user.specialty,
-            rating: user.rating,
-            avatar: user.avatar,
-            token: generateToken(user._id)
-          });
-        } else if (user) {
-          return res.status(401).json({ message: 'Invalid email or password' });
-        }
-      } catch (dbError) {
-        console.log('📌 DB offline, checking mock user login');
+        await connectDB();
+      } catch (e) {
+        console.log('📌 DB connection attempt failed in login');
       }
     }
 
-    // Check mock users for quick demo login
-    const foundMock = mockUsers.find(u => u.email === email && u.password === password);
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const user = await User.findOne({ email: cleanEmail });
+        if (user) {
+          const isMatch = await user.matchPassword(password);
+          if (isMatch) {
+            return res.json({
+              _id: user._id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              specialty: user.specialty,
+              rating: user.rating,
+              avatar: user.avatar,
+              token: generateToken(user._id)
+            });
+          } else {
+            return res.status(401).json({ message: 'Invalid password. Please check your password.' });
+          }
+        } else {
+          return res.status(401).json({ message: 'No account found with this email. Please register first.' });
+        }
+      } catch (dbError) {
+        console.log('📌 DB query error in login:', dbError.message);
+      }
+    }
+
+    // Check mock users for quick demo login if DB query missed
+    const foundMock = mockUsers.find(
+      u => u.email?.toLowerCase() === cleanEmail && u.password === password
+    );
     if (foundMock) {
       return res.json({
         _id: foundMock._id,

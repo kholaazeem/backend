@@ -36,9 +36,18 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Pass socket instance to routes
-app.use((req, res, next) => {
+import mongoose from 'mongoose';
+
+// Pass socket instance to routes and ensure DB connection
+app.use(async (req, res, next) => {
   req.io = io;
+  if (mongoose.connection.readyState !== 1) {
+    try {
+      await connectDB();
+    } catch (e) {
+      // Allow request to proceed to fallback if needed
+    }
+  }
   next();
 });
 
@@ -66,12 +75,18 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
     system: 'SupportFlow AI Engine API',
+    database: {
+      connected: mongoose.connection.readyState === 1,
+      readyState: mongoose.connection.readyState,
+      dbName: mongoose.connection.name || 'none'
+    },
     timestamp: new Date()
   });
 });
 
-// Connect Database
+// Initial Database Connection attempt
 connectDB();
+
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {

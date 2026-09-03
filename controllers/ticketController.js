@@ -58,8 +58,6 @@ export const createTicket = async (req, res) => {
   try {
     const { subject, description, category, urgency, assignedWorkerId, aiTriage } = req.body;
     const customerId = req.user?._id || 'user_cust_1';
-    const validWorkerId = (assignedWorkerId && mongoose.Types.ObjectId.isValid(assignedWorkerId)) ? assignedWorkerId : null;
-    const initialStatus = validWorkerId ? 'assigned' : 'new';
 
     if (mongoose.connection.readyState !== 1) {
       try {
@@ -67,11 +65,30 @@ export const createTicket = async (req, res) => {
       } catch (e) {}
     }
 
+    let targetWorkerId = (assignedWorkerId && mongoose.Types.ObjectId.isValid(assignedWorkerId)) ? assignedWorkerId : null;
+
     if (mongoose.connection.readyState === 1) {
       try {
+        // If customer did not manually pick a worker, auto-match the best registered worker from database
+        if (!targetWorkerId) {
+          const predictedCat = category || aiTriage?.predictedCategory || 'General';
+          let matched = await User.findOne({ role: 'worker', specialty: predictedCat, isAvailable: true });
+          if (!matched) {
+            matched = await User.findOne({ role: 'worker', isAvailable: true });
+          }
+          if (!matched) {
+            matched = await User.findOne({ role: 'worker' });
+          }
+          if (matched) {
+            targetWorkerId = matched._id;
+          }
+        }
+
+        const initialStatus = targetWorkerId ? 'assigned' : 'new';
+
         const ticket = await Ticket.create({
           customer: customerId,
-          assignedWorker: validWorkerId,
+          assignedWorker: targetWorkerId,
           subject,
           description,
           status: initialStatus,
@@ -95,7 +112,7 @@ export const createTicket = async (req, res) => {
             ticketId: ticket._id,
             ticketNumber: ticket.ticketNumber,
             subject: ticket.subject,
-            assignedWorkerId: validWorkerId,
+            assignedWorkerId: targetWorkerId,
             status: ticket.status,
             customerName: populated.customer?.name || 'Customer',
             ticket: populated

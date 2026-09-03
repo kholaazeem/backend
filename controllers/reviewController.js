@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Review from '../models/Review.js';
 import User from '../models/User.js';
 import Ticket from '../models/Ticket.js';
+import { connectDB } from '../config/db.js';
 
 let mockReviews = [];
 
@@ -11,6 +12,12 @@ export const submitReview = async (req, res) => {
   try {
     const { ticketId, workerId, rating, comment } = req.body;
     const customerId = req.user?._id;
+
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectDB();
+      } catch (e) {}
+    }
 
     if (mongoose.connection.readyState === 1) {
       try {

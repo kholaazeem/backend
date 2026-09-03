@@ -167,12 +167,20 @@ export const getMe = async (req, res) => {
 // @access  Public
 export const getWorkers = async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectDB();
+      } catch (e) {
+        console.log('📌 DB connection attempt failed in getWorkers');
+      }
+    }
+
     if (mongoose.connection.readyState === 1) {
       try {
         const workers = await User.find({ role: 'worker' }).select('-password');
         return res.json(workers);
       } catch (dbError) {
-        console.log('📌 DB error fetching workers');
+        console.log('📌 DB error fetching workers:', dbError.message);
       }
     }
     const mockFiltered = mockUsers.filter(u => u.role === 'worker');

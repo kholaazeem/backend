@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Ticket from '../models/Ticket.js';
 import User from '../models/User.js';
 import { analyzeComplaintAI, chatWithSupportAI } from '../services/aiService.js';
+import { connectDB } from '../config/db.js';
 
 // In-memory mock storage if MongoDB is not connected
 let mockTickets = [];
@@ -20,6 +21,12 @@ export const previewAITriage = async (req, res) => {
         method: 'keyword-fallback',
         suggestedWorkers: mockAvailableWorkers
       });
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectDB();
+      } catch (e) {}
     }
 
     const aiResult = await analyzeComplaintAI(description, subject);
@@ -51,13 +58,20 @@ export const createTicket = async (req, res) => {
   try {
     const { subject, description, category, urgency, assignedWorkerId, aiTriage } = req.body;
     const customerId = req.user?._id || 'user_cust_1';
-    const initialStatus = assignedWorkerId ? 'assigned' : 'new';
+    const validWorkerId = (assignedWorkerId && mongoose.Types.ObjectId.isValid(assignedWorkerId)) ? assignedWorkerId : null;
+    const initialStatus = validWorkerId ? 'assigned' : 'new';
+
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectDB();
+      } catch (e) {}
+    }
 
     if (mongoose.connection.readyState === 1) {
       try {
         const ticket = await Ticket.create({
           customer: customerId,
-          assignedWorker: assignedWorkerId || null,
+          assignedWorker: validWorkerId,
           subject,
           description,
           status: initialStatus,
@@ -81,20 +95,23 @@ export const createTicket = async (req, res) => {
             ticketId: ticket._id,
             ticketNumber: ticket.ticketNumber,
             subject: ticket.subject,
-            assignedWorkerId
+            assignedWorkerId: validWorkerId,
+            status: ticket.status,
+            customerName: populated.customer?.name || 'Customer',
+            ticket: populated
           });
         }
 
         return res.status(201).json(populated);
       } catch (dbError) {
-        console.log('📌 DB error, using mock ticket creation fallback');
+        console.log('📌 DB error in createTicket:', dbError.message);
       }
     }
     const newMock = {
       _id: 'tkt_' + Date.now(),
       ticketNumber: 'TKT-' + Math.floor(1000 + Math.random() * 9000),
       customer: { _id: customerId, name: req.user?.name || 'Customer', email: req.user?.email || '' },
-      assignedWorker: assignedWorkerId ? { _id: assignedWorkerId, name: 'Assigned Worker' } : null,
+      assignedWorker: validWorkerId ? { _id: validWorkerId, name: 'Assigned Worker' } : null,
       subject,
       description,
       category: category || aiTriage?.predictedCategory || 'General',
@@ -123,6 +140,12 @@ export const getTickets = async (req, res) => {
     const userId = req.user?._id;
     const userRole = req.user?.role || 'customer';
 
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectDB();
+      } catch (e) {}
+    }
+
     if (mongoose.connection.readyState === 1) {
       try {
         let query = {};
@@ -131,9 +154,9 @@ export const getTickets = async (req, res) => {
         } else if (userRole === 'worker') {
           query.$or = [
             { assignedWorker: userId },
+            { assignedWorker: null, status: { $in: ['new', 'pending', 'assigned'] } },
             { status: 'new' },
-            { status: 'pending' },
-            { status: 'assigned' }
+            { status: 'pending' }
           ];
         }
 
@@ -175,6 +198,12 @@ export const updateTicketStatus = async (req, res) => {
     // Enforce Rule: A ticket cannot be marked Resolved without a resolution/reply note
     if ((status === 'resolved' || status === 'completed') && (!resolutionNote || !resolutionNote.trim())) {
       return res.status(400).json({ message: 'A ticket cannot be marked Resolved without a resolution/reply note.' });
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectDB();
+      } catch (e) {}
     }
 
     if (mongoose.connection.readyState === 1) {
@@ -268,6 +297,12 @@ export const addTicketMessage = async (req, res) => {
       createdAt: new Date()
     };
 
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectDB();
+      } catch (e) {}
+    }
+
     if (mongoose.connection.readyState === 1) {
       try {
         const ticket = await Ticket.findById(id);
@@ -326,6 +361,12 @@ export const reviewAITriage = async (req, res) => {
   try {
     const { id } = req.params;
     const { category, urgency, aiSummary } = req.body;
+
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        await connectDB();
+      } catch (e) {}
+    }
 
     if (mongoose.connection.readyState === 1) {
       try {

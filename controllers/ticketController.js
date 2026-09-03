@@ -57,78 +57,83 @@ export const previewAITriage = async (req, res) => {
 export const createTicket = async (req, res) => {
   try {
     const { subject, description, category, urgency, assignedWorkerId, aiTriage } = req.body;
-    const customerId = req.user?._id || 'user_cust_1';
+    const customerId = req.user?._id;
+
+    if (!customerId) {
+      return res.status(401).json({ message: 'Authentication required to create ticket' });
+    }
 
     if (mongoose.connection.readyState !== 1) {
       try {
         await connectDB();
-      } catch (e) {}
+      } catch (e) {
+        console.error('connectDB error in createTicket:', e.message);
+      }
     }
 
     let targetWorkerId = (assignedWorkerId && mongoose.Types.ObjectId.isValid(assignedWorkerId)) ? assignedWorkerId : null;
 
     if (mongoose.connection.readyState === 1) {
-      try {
-        // If customer did not manually pick a worker, auto-match the best registered worker from database
-        if (!targetWorkerId) {
-          const predictedCat = category || aiTriage?.predictedCategory || 'General';
-          let matched = await User.findOne({ role: 'worker', specialty: predictedCat, isAvailable: true });
-          if (!matched) {
-            matched = await User.findOne({ role: 'worker', isAvailable: true });
-          }
-          if (!matched) {
-            matched = await User.findOne({ role: 'worker' });
-          }
-          if (matched) {
-            targetWorkerId = matched._id;
-          }
+      // If customer did not manually pick a worker, auto-match the best registered worker from database
+      if (!targetWorkerId) {
+        const predictedCat = category || aiTriage?.predictedCategory || 'General';
+        let matched = await User.findOne({ role: 'worker', specialty: predictedCat, isAvailable: true });
+        if (!matched) {
+          matched = await User.findOne({ role: 'worker', isAvailable: true });
         }
-
-        const initialStatus = targetWorkerId ? 'assigned' : 'new';
-
-        const ticket = await Ticket.create({
-          customer: customerId,
-          assignedWorker: targetWorkerId,
-          subject,
-          description,
-          status: initialStatus,
-          category: category || aiTriage?.predictedCategory || 'General',
-          urgency: urgency || aiTriage?.suggestedUrgency || 'Medium',
-          aiTriage: aiTriage || {
-            predictedCategory: category || 'General',
-            suggestedUrgency: urgency || 'Medium',
-            aiSummary: description.substring(0, 100),
-            method: 'keyword-fallback'
-          }
-        });
-
-        const populated = await Ticket.findById(ticket._id)
-          .populate('customer', 'name email avatar')
-          .populate('assignedWorker', 'name specialty rating avatar');
-
-        // Emit real-time notification via Socket.IO
-        if (req.io) {
-          req.io.emit('new_booking_notification', {
-            ticketId: ticket._id,
-            ticketNumber: ticket.ticketNumber,
-            subject: ticket.subject,
-            assignedWorkerId: targetWorkerId,
-            status: ticket.status,
-            customerName: populated.customer?.name || 'Customer',
-            ticket: populated
-          });
+        if (!matched) {
+          matched = await User.findOne({ role: 'worker' });
         }
-
-        return res.status(201).json(populated);
-      } catch (dbError) {
-        console.log('📌 DB error in createTicket:', dbError.message);
+        if (matched) {
+          targetWorkerId = matched._id;
+        }
       }
+
+      const initialStatus = targetWorkerId ? 'assigned' : 'new';
+
+      const ticket = await Ticket.create({
+        customer: customerId,
+        assignedWorker: targetWorkerId,
+        subject,
+        description,
+        status: initialStatus,
+        category: category || aiTriage?.predictedCategory || 'General',
+        urgency: urgency || aiTriage?.suggestedUrgency || 'Medium',
+        aiTriage: aiTriage || {
+          predictedCategory: category || 'General',
+          suggestedUrgency: urgency || 'Medium',
+          aiSummary: description.substring(0, 100),
+          method: 'keyword-fallback'
+        }
+      });
+
+      const populated = await Ticket.findById(ticket._id)
+        .populate('customer', 'name email avatar')
+        .populate('assignedWorker', 'name specialty rating avatar');
+
+      // Emit real-time notification via Socket.IO
+      if (req.io) {
+        req.io.emit('new_booking_notification', {
+          ticketId: ticket._id,
+          ticketNumber: ticket.ticketNumber,
+          subject: ticket.subject,
+          assignedWorkerId: targetWorkerId,
+          status: ticket.status,
+          customerName: populated?.customer?.name || 'Customer',
+          ticket: populated
+        });
+      }
+
+      return res.status(201).json(populated);
     }
+
+    // Fallback if DB is offline
+    const initialStatus = targetWorkerId ? 'assigned' : 'new';
     const newMock = {
       _id: 'tkt_' + Date.now(),
       ticketNumber: 'TKT-' + Math.floor(1000 + Math.random() * 9000),
       customer: { _id: customerId, name: req.user?.name || 'Customer', email: req.user?.email || '' },
-      assignedWorker: validWorkerId ? { _id: validWorkerId, name: 'Assigned Worker' } : null,
+      assignedWorker: targetWorkerId ? { _id: targetWorkerId, name: 'Assigned Worker' } : null,
       subject,
       description,
       category: category || aiTriage?.predictedCategory || 'General',
@@ -146,7 +151,8 @@ export const createTicket = async (req, res) => {
     mockTickets.unshift(newMock);
     return res.status(201).json(newMock);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('📌 createTicket error:', error);
+    res.status(500).json({ message: error.message || 'Failed to create ticket' });
   }
 };
 

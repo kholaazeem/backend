@@ -34,6 +34,16 @@ export const registerUser = async (req, res) => {
           return res.status(400).json({ message: 'User already exists with this email' });
         }
 
+        // Enforce Rule: Only 1 Admin can ever be registered
+        if (role === 'admin') {
+          const adminCount = await User.countDocuments({ role: 'admin' });
+          if (adminCount >= 1) {
+            return res.status(400).json({ 
+              message: 'An Admin account already exists. Only 1 Admin is allowed to register. Please log in with existing Admin credentials or ask the Admin to assign you the role.' 
+            });
+          }
+        }
+
         const user = await User.create({
           name: name ? name.trim() : 'User',
           email: cleanEmail,
@@ -245,4 +255,95 @@ export const updateProfile = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Check if an admin already exists in the system
+// @route   GET /api/auth/has-admin
+// @access  Public
+export const checkHasAdmin = async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      try { await connectDB(); } catch (e) {}
+    }
+    if (mongoose.connection.readyState === 1) {
+      const adminCount = await User.countDocuments({ role: 'admin' });
+      return res.json({ hasAdmin: adminCount >= 1 });
+    }
+    const mockAdmin = mockUsers.some(u => u.role === 'admin');
+    return res.json({ hasAdmin: mockAdmin });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get all users for Admin management
+// @route   GET /api/auth/users
+// @access  Private (Admin only)
+export const getAllUsers = async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      try { await connectDB(); } catch (e) {}
+    }
+    if (mongoose.connection.readyState === 1) {
+      const users = await User.find().select('-password').sort({ createdAt: -1 });
+      return res.json(users);
+    }
+    const mockSafe = mockUsers.map(({ password, ...u }) => u);
+    return res.json(mockSafe);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Admin assigns / changes a user's role (e.g. promote to Admin, Worker, Customer)
+// @route   PUT /api/auth/users/:id/role
+// @access  Private (Admin only)
+export const updateUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role, specialty } = req.body;
+
+    if (!['admin', 'worker', 'customer'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role. Must be admin, worker, or customer.' });
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      try { await connectDB(); } catch (e) {}
+    }
+
+    if (mongoose.connection.readyState === 1) {
+      const user = await User.findById(id);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      user.role = role;
+      if (specialty && role === 'worker') {
+        user.specialty = specialty;
+      }
+      await user.save();
+
+      return res.json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        specialty: user.specialty,
+        rating: user.rating,
+        message: `User ${user.name} role successfully changed to ${role}`
+      });
+    }
+
+    const mockIdx = mockUsers.findIndex(u => u._id === id);
+    if (mockIdx !== -1) {
+      mockUsers[mockIdx].role = role;
+      if (specialty) mockUsers[mockIdx].specialty = specialty;
+      return res.json(mockUsers[mockIdx]);
+    }
+
+    return res.status(404).json({ message: 'User not found' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 
